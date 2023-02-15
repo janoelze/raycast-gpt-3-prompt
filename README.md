@@ -1,1 +1,3 @@
-# raycast-gpt-3-prompt
+# OpenAI Prompt
+
+Execute a prompt against the OpenAI davinci-003 model.
