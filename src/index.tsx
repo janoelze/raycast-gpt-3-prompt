@@ -44,7 +44,7 @@ export default function Command() {
       const dataString = data.toString();
 
       try {
-        let responseData = JSON.parse(dataString.slice(6));
+        let responseData = JSON.parse(dataString.replace("data: {", "{"));
         
         if (responseData.choices && responseData.choices.length > 0) {
           setResponseString(previousArray => [
