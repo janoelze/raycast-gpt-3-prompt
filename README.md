@@ -1,4 +1,4 @@
-![](assets/output.gif)
+![](assets/output-demo.gif)
 
 #### Raycast Extension
 # GPT-3 Prompt
