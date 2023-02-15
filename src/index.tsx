@@ -43,26 +43,25 @@ export default function Command() {
     res.data.on('data', data => {
       const dataString = data.toString();
 
-      if(loading) {
-        setLoading(false);
-      }
-
       try {
         let responseData = JSON.parse(dataString.slice(6));
         
         if (responseData.choices && responseData.choices.length > 0) {
-          setResponseString(previousArray => [...previousArray, responseData.choices[0].text]);
+          setResponseString(previousArray => [
+            ...previousArray,
+            responseData.choices[0].text
+          ]);
         }
       } catch (error) {
         showToast({ title: "Done", message: "Finished execution of the prompt" });
+        setLoading(false);
       }
     })
   }
 
   if (responseString.length > 0) {
-    let renderedResponseString = responseString.join("");
     return (
-      <Detail markdown={renderedResponseString} />
+      <Detail isLoading={loading} markdown={responseString.join("")} />
     );
   };
 
