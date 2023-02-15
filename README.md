@@ -1,3 +1,3 @@
-# OpenAI Prompt
+# GPT-3 Prompt
 
-Execute a prompt against the OpenAI davinci-003 model.
+Execute a text prompt against the most recent OpenAI GPT-3 models.

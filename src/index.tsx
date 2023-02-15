@@ -19,15 +19,9 @@ export default function Command() {
   const [responseString, setResponseString] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
-  const [state, setState] = useState({
-    view: "form",
-    prompt: "",
-  });
-
   async function handleSubmit(values: Values) {
     const preferences = getPreferenceValues<Preferences>();
 
-    showToast({ title: "One second please!", message: "Executing your prompt..." });
     setLoading(true);
 
     const configuration = new Configuration({
@@ -49,12 +43,15 @@ export default function Command() {
     res.data.on('data', data => {
       const dataString = data.toString();
 
+      if(loading) {
+        setLoading(false);
+      }
+
       try {
         let responseData = JSON.parse(dataString.slice(6));
-        if (responseData.choices) {
-          const text = responseData.choices[0].text;
-          setLoading(false);
-          setResponseString(previousArray => [...previousArray, text]);
+        
+        if (responseData.choices && responseData.choices.length > 0) {
+          setResponseString(previousArray => [...previousArray, responseData.choices[0].text]);
         }
       } catch (error) {
         showToast({ title: "Done", message: "Finished execution of the prompt" });
@@ -64,29 +61,22 @@ export default function Command() {
 
   if (responseString.length > 0) {
     let renderedResponseString = responseString.join("");
-    console.log(renderedResponseString);
     return (
       <Detail markdown={renderedResponseString} />
     );
   };
 
-  if (loading) {
-    return (
-      <Detail markdown="*Hang tight!*" />
-    );
-  }; 
-
-  if(state.view == "form") {
-    return (
-      <Form
-        actions={
-          <ActionPanel>
-            <Action.SubmitForm onSubmit={handleSubmit} />
-          </ActionPanel>
-        }
-      >
-        <Form.TextArea id="textarea" title="Prompt" placeholder="Enter the prompt to execute" />
-      </Form>
-    );
-  };
+  return (
+    <Form
+      navigationTitle="GPT-3 Prompt"
+      isLoading={loading}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.TextArea autoFocus={true} id="textarea" title="Prompt" placeholder="Enter the prompt to execute" />
+    </Form>
+  );
 }
