@@ -7,3 +7,5 @@ This Raycast extension allows you to execute a text prompt against the most rece
 
 * Realtime text completion, preview result as it's generated
 * Copy Result to Clipboard
+
+You'll need to have an OpenAI API key in order to use this extension. You can get one through the [OpenAI developer portal](https://beta.openai.com/docs/api-reference/authentication).
