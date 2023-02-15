@@ -21,6 +21,7 @@ export default function Command() {
 
   async function handleSubmit(values: Values) {
     const preferences = getPreferenceValues<Preferences>();
+    const prompt = values.textarea.trim();
 
     setLoading(true);
 
@@ -28,11 +29,16 @@ export default function Command() {
       apiKey: preferences.openai_api_key,
     });
 
+    setResponseString(previousArray => [
+      ...previousArray,
+      `**${prompt}**`
+    ]);
+
     const openai = new OpenAIApi(configuration);
 
     const res = await openai.createCompletion({
       model: "text-davinci-003",
-      prompt: values.textarea,
+      prompt: prompt,
       max_tokens: 2000,
       temperature: 0,
       stream: true,
@@ -45,7 +51,7 @@ export default function Command() {
 
       try {
         let responseData = JSON.parse(dataString.replace("data: {", "{"));
-        
+
         if (responseData.choices && responseData.choices.length > 0) {
           setResponseString(previousArray => [
             ...previousArray,
