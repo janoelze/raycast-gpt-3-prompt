@@ -1,3 +1,5 @@
+![](assets/python-demo.gif)
+
 #### Raycast Extension
 # GPT-3 Prompt
 
@@ -5,8 +7,3 @@ This Raycast extension allows you to execute a text prompt against the most rece
 
 * Realtime text completion, preview result as it's generated
 * Copy Result to Clipboard
-
-## Demo
-
-![](assets/coffee-demo.gif)
-![](assets/python-demo.gif)
