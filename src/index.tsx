@@ -40,6 +40,20 @@ export default function Command() {
   const [responseString, setResponseString] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
 
+  function getResponseString () {
+    let out = "";
+
+    for(let i = 0; i < responseString.length; i++){
+      if (responseString[i] == '\n'){
+        out += `\r\n`
+      }else{
+        out += responseString[i]
+      };
+    }
+
+    return out;
+  }
+
   async function handleSubmit(values: Values) {
     const preferences = getPreferenceValues<Preferences>();
     const prompt = values.textarea.trim();
@@ -60,7 +74,7 @@ export default function Command() {
     const completion = await openai.createCompletion({
       model: "text-davinci-003",
       prompt: prompt,
-      max_tokens: 2000,
+      max_tokens: 4000,
       temperature: 0,
       stream: true,
     }, {
@@ -93,7 +107,18 @@ export default function Command() {
 
   if (responseString.length > 0) {
     return (
-      <Detail isLoading={loading} markdown={responseString.join("")} />
+      <Detail
+        isLoading={loading}
+        markdown={getResponseString()}
+        actions={
+          <ActionPanel>
+            <Action.CopyToClipboard
+              title="Copy Result"
+              content={getResponseString()}
+            />
+          </ActionPanel>
+        }
+      />
     );
   };
 
