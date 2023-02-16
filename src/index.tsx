@@ -1,14 +1,50 @@
-import { useState } from "react"; 
-import { Form, Detail, ActionPanel, Action, showToast, getPreferenceValues, openCommandPreferences } from "@raycast/api";
+import { useRef, useState } from "react";
+import { Form, Detail, LocalStorage, ActionPanel, Action, showToast, getPreferenceValues, openCommandPreferences } from "@raycast/api";
 import { Configuration, OpenAIApi } from "openai";
+import { FormValidation, useCachedState, useForm } from '@raycast/utils';
 
 interface Preferences {
   openai_api_key?: string;
 }
 
-type Values = {
-  textarea: string;
+const config = {
+  historyStorageKey: "gpt-3-prompt-history-v2",
+  maxHistoryItems: 20,
 };
+
+function concatResponseString(responseFragments) {
+  let out = "";
+
+  for (let i = 0; i < responseFragments.length; i++) {
+    if (responseFragments[i] == '\n') {
+      out += `\r\n`
+    } else {
+      out += responseFragments[i]
+    };
+  }
+
+  return out;
+}
+
+async function getHistory(cb) {
+  let data = await LocalStorage.getItem<string>(config.historyStorageKey) || "[]";
+  cb(JSON.parse(data));
+}
+
+async function pushToHistory(sanitizedPrompt: string) {
+  if (!sanitizedPrompt || sanitizedPrompt.trim() == '') return;
+
+  const data = await LocalStorage.getItem<string>(config.historyStorageKey) || "[]";
+  let h = JSON.parse(data);
+
+  if (h.includes(sanitizedPrompt)) {
+    h.splice(h.indexOf(sanitizedPrompt), 1);
+  }{
+    h.push(sanitizedPrompt);
+  }
+
+  await LocalStorage.setItem(config.historyStorageKey, JSON.stringify(h));
+}
 
 async function* chunksToLines(chunksAsync) {
   let previous = "";
@@ -36,28 +72,46 @@ async function* streamCompletion(data) {
   yield* linesToMessages(chunksToLines(data));
 }
 
+type FormValues = {
+  currentPrompt: string
+  historyPrompt: string
+}
+
 export default function Command() {
   const [responseString, setResponseString] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [history, setHistory] = useState<string[]>([]);
+  const currentPromptFieldRef = useRef<Form.TextArea>(null);
 
-  function getResponseString () {
-    let out = "";
-
-    for(let i = 0; i < responseString.length; i++){
-      if (responseString[i] == '\n'){
-        out += `\r\n`
-      }else{
-        out += responseString[i]
-      };
+  const { handleSubmit, values, setValue } = useForm<FormValues>({
+    async onSubmit(values) {
+      executePrompt(values.currentPrompt);
     }
+  });
 
-    return out;
+  getHistory((historyArr) => {
+    setHistory(historyArr);
+  });
+
+  function handleChangeHistoryPrompt(value: string) {
+    setValue('currentPrompt', value);
+    currentPromptFieldRef.current?.focus();
   }
 
-  async function handleSubmit(values: Values) {
-    const preferences = getPreferenceValues<Preferences>();
-    const prompt = values.textarea.trim();
+  function handleChangeCurrentPrompt(value: string) {
+    setValue('currentPrompt', value);
+  }
 
+  async function executePrompt(prompt: string) {
+    const preferences = getPreferenceValues<Preferences>();
+    const sanitizedPrompt = prompt.trim();
+
+    if (!preferences.openai_api_key) {
+      openCommandPreferences();
+      return;
+    }
+
+    pushToHistory(sanitizedPrompt);
     setLoading(true);
 
     const configuration = new Configuration({
@@ -66,14 +120,14 @@ export default function Command() {
 
     setResponseString(previousArray => [
       ...previousArray,
-      `**${prompt}**`
+      `**${sanitizedPrompt}**`
     ]);
 
     const openai = new OpenAIApi(configuration);
 
     const completion = await openai.createCompletion({
       model: "text-davinci-003",
-      prompt: prompt,
+      prompt: sanitizedPrompt,
       max_tokens: 4000,
       temperature: 0,
       stream: true,
@@ -86,12 +140,12 @@ export default function Command() {
         const parsed = JSON.parse(message);
         const { text, finish_reason } = parsed.choices[0];
 
-        if (finish_reason === null){
+        if (finish_reason === null) {
           setResponseString(previousArray => [
             ...previousArray,
             text
           ]);
-        }else{
+        } else {
           showToast({
             title: "Done",
             message: "Finished execution of the prompt!"
@@ -106,19 +160,37 @@ export default function Command() {
   }
 
   if (responseString.length > 0) {
+    const concatString = concatResponseString(responseString);
     return (
       <Detail
         isLoading={loading}
-        markdown={getResponseString()}
+        markdown={concatString}
         actions={
           <ActionPanel>
             <Action.CopyToClipboard
               title="Copy Result"
-              content={getResponseString()}
+              content={concatString}
             />
           </ActionPanel>
         }
       />
+    );
+  };
+
+  let historyElem = '';
+
+  if (history.length > 0) {
+    historyElem = (
+      <Form.Dropdown
+        id="historyPrompt"
+        title="Recent Prompts"
+        value={values.historyPrompt}
+        onChange={handleChangeHistoryPrompt}
+      >
+        {history.reverse().map((prompt, index) => (
+          <Form.Dropdown.Item value={prompt} key={index} title={prompt} />
+        ))}
+      </Form.Dropdown>
     );
   };
 
@@ -132,7 +204,8 @@ export default function Command() {
         </ActionPanel>
       }
     >
-      <Form.TextArea autoFocus={true} id="textarea" title="Prompt" placeholder="Enter the prompt to execute" />
+      <Form.TextArea ref={currentPromptFieldRef} onChange={handleChangeCurrentPrompt} value={values.currentPrompt} autoFocus={true} id="currentPrompt" title="Prompt" placeholder="Enter a text prompt" />
+      {historyElem}
     </Form>
   );
 }
