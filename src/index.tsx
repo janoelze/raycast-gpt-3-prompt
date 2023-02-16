@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Form, Detail, LocalStorage, ActionPanel, Action, showToast, getPreferenceValues, openCommandPreferences } from "@raycast/api";
 import { Configuration, OpenAIApi } from "openai";
 import { FormValidation, useCachedState, useForm } from '@raycast/utils';
@@ -12,7 +12,7 @@ const config = {
   maxHistoryItems: 20,
 };
 
-function concatResponseString(responseFragments) {
+function concatResponseFragments(responseFragments: Array<String>) {
   let out = "";
 
   for (let i = 0; i < responseFragments.length; i++) {
@@ -27,8 +27,9 @@ function concatResponseString(responseFragments) {
 }
 
 async function getHistory(cb) {
-  let data = await LocalStorage.getItem<string>(config.historyStorageKey) || "[]";
-  cb(JSON.parse(data));
+  const data = await LocalStorage.getItem<string>(config.historyStorageKey) || "[]";
+  const parsed = JSON.parse(data);
+  cb(parsed.reverse());
 }
 
 async function pushToHistory(sanitizedPrompt: string) {
@@ -39,37 +40,32 @@ async function pushToHistory(sanitizedPrompt: string) {
 
   if (h.includes(sanitizedPrompt)) {
     h.splice(h.indexOf(sanitizedPrompt), 1);
-  }{
+  } {
     h.push(sanitizedPrompt);
   }
 
   await LocalStorage.setItem(config.historyStorageKey, JSON.stringify(h));
 }
 
-async function* chunksToLines(chunksAsync) {
+async function* streamCompletion(data: Object) {
   let previous = "";
-  for await (const chunk of chunksAsync) {
+  for await (const chunk of data) {
     const bufferChunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     previous += bufferChunk;
     let eolIndex;
     while ((eolIndex = previous.indexOf("\n")) >= 0) {
       const line = previous.slice(0, eolIndex + 1).trimEnd();
       if (line === "data: [DONE]") break;
-      if (line.startsWith("data: ")) yield line;
+      if (line.startsWith("data: ")){
+        const message = line.substring("data :".length);
+        const parsed = JSON.parse(message);
+        if (parsed) {
+          yield parsed;
+        }
+      }
       previous = previous.slice(eolIndex + 1);
     }
   }
-}
-
-async function* linesToMessages(linesAsync) {
-  for await (const line of linesAsync) {
-    const message = line.substring("data :".length);
-    yield message;
-  }
-}
-
-async function* streamCompletion(data) {
-  yield* linesToMessages(chunksToLines(data));
 }
 
 type FormValues = {
@@ -78,23 +74,36 @@ type FormValues = {
 }
 
 export default function Command() {
-  const [responseString, setResponseString] = useState<string[]>([]);
+  const [responseFragments, setResponseFragments] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [history, setHistory] = useState<string[]>([]);
+  const [isInitialFill, setIsInitialFill] = useState<boolean>(true);
+  const [historyItems, setHistoryItems] = useState<string[]>([]);
   const currentPromptFieldRef = useRef<Form.TextArea>(null);
 
   const { handleSubmit, values, setValue } = useForm<FormValues>({
     async onSubmit(values) {
       executePrompt(values.currentPrompt);
+    },
+    initialValues: {
+      currentPrompt: "",
+      historyPrompt: ""
     }
   });
 
-  getHistory((historyArr) => {
-    setHistory(historyArr);
-  });
+  // Fetch History
+  useEffect(() => {
+    getHistory((historyArr: Array<String>) => {
+      setHistoryItems(historyArr.map((str) => str.toString()));
+    });
+  }, []);
 
-  function handleChangeHistoryPrompt(value: string) {
-    setValue('currentPrompt', value);
+  function handleSelectRecentPrompt(value: string) {
+    if (isInitialFill) {
+      setIsInitialFill(false);
+      return;
+    }else{
+      setValue('currentPrompt', value);
+    }
     currentPromptFieldRef.current?.focus();
   }
 
@@ -118,7 +127,7 @@ export default function Command() {
       apiKey: preferences.openai_api_key,
     });
 
-    setResponseString(previousArray => [
+    setResponseFragments(previousArray => [
       ...previousArray,
       `**${sanitizedPrompt}**`
     ]);
@@ -135,13 +144,13 @@ export default function Command() {
       responseType: 'stream'
     });
 
-    for await (const message of streamCompletion(completion.data)) {
+    for await (const parsedMessage of streamCompletion(completion.data)) {
       try {
-        const parsed = JSON.parse(message);
-        const { text, finish_reason } = parsed.choices[0];
+        // const parsed = JSON.parse(message);
+        const { text, finish_reason } = parsedMessage.choices[0];
 
         if (finish_reason === null) {
-          setResponseString(previousArray => [
+          setResponseFragments(previousArray => [
             ...previousArray,
             text
           ]);
@@ -154,13 +163,13 @@ export default function Command() {
           setLoading(false);
         };
       } catch (error) {
-        console.error("Could not JSON parse stream message", message, error);
+        console.error("Could not JSON parse stream message", parsedMessage, error);
       }
     }
   }
 
-  if (responseString.length > 0) {
-    const concatString = concatResponseString(responseString);
+  if (responseFragments.length > 0) {
+    const concatString = concatResponseFragments(responseFragments);
     return (
       <Detail
         isLoading={loading}
@@ -177,17 +186,17 @@ export default function Command() {
     );
   };
 
-  let historyElem = '';
+  let historyElem = null;
 
-  if (history.length > 0) {
+  if (historyItems.length > 0) {
     historyElem = (
       <Form.Dropdown
         id="historyPrompt"
         title="Recent Prompts"
         value={values.historyPrompt}
-        onChange={handleChangeHistoryPrompt}
+        onChange={handleSelectRecentPrompt}
       >
-        {history.reverse().map((prompt, index) => (
+        {historyItems.map((prompt, index) => (
           <Form.Dropdown.Item value={prompt} key={index} title={prompt} />
         ))}
       </Form.Dropdown>
